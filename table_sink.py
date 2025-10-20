@@ -11,6 +11,7 @@ class TableSink:
         key_column: str = "epoch",
         divider_interval: Optional[int] = None,
         float_precision: int = 4,
+        max_rows: Optional[int] = None,
     ):
         """
         Initialize the table sink.
@@ -19,10 +20,12 @@ class TableSink:
             key_column: The column name to use as the primary key/identifier
             divider_interval: Add a divider row every N rows (None = no dividers)
             float_precision: Number of decimal places for float values
+            max_rows: Maximum number of rows to display (None = unlimited)
         """
         self.key_column = key_column
         self.divider_interval = divider_interval
         self.float_precision = float_precision
+        self.max_rows = max_rows
 
         self.columns: List[str] = []
         self.rows: Dict[Any, Dict[str, Any]] = {}
@@ -160,6 +163,12 @@ class TableSink:
         if key_value not in self.rows:
             self.row_order.append(key_value)
 
+            # Enforce max_rows limit
+            if self.max_rows and len(self.row_order) > self.max_rows:
+                # Remove the oldest row
+                oldest_key = self.row_order.pop(0)
+                del self.rows[oldest_key]
+
         self.rows[key_value] = extra_data
 
         # Render the table
@@ -176,7 +185,7 @@ if __name__ == "__main__":
     logger.remove()
 
     # Add table sink
-    table_sink = TableSink(key_column="epoch", divider_interval=5, float_precision=4)
+    table_sink = TableSink(key_column="epoch", divider_interval=5, float_precision=4, max_rows=4)
     logger.add(table_sink)
 
     # Simulate training
