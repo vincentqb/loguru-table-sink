@@ -2,20 +2,22 @@ import sys
 from io import StringIO
 from typing import Any, Dict, List, Optional
 
+from loguru import _defaults as loguru_defaults
+from loguru._colorizer import Colorizer
+
 
 class TableSink:
     """A loguru sink that displays log records as an updating table."""
 
     LEVEL_COLORS = {
-        "TRACE": "\033[36m",  # Cyan
-        "DEBUG": "\033[34m",  # Blue
-        "INFO": "\033[37m",  # White
-        "SUCCESS": "\033[32m",  # Green
-        "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[31;1m",  # Red + Bold
+        "TRACE": loguru_defaults.LOGURU_TRACE_COLOR,
+        "DEBUG": loguru_defaults.LOGURU_DEBUG_COLOR,
+        "INFO": loguru_defaults.LOGURU_INFO_COLOR,
+        "SUCCESS": loguru_defaults.LOGURU_SUCCESS_COLOR,
+        "WARNING": loguru_defaults.LOGURU_WARNING_COLOR,
+        "ERROR": loguru_defaults.LOGURU_ERROR_COLOR,
+        "CRITICAL": loguru_defaults.LOGURU_CRITICAL_COLOR,
     }
-    RESET = "\033[0m"
 
     def __init__(
         self,
@@ -102,7 +104,8 @@ class TableSink:
         row_content = " " + " ".join(parts) + " "
 
         if color_code and self.colorize:
-            return color_code + row_content + self.RESET
+            message = color_code + row_content + "</>" * len(color_code.split("><"))
+            return Colorizer.prepare_message(message).colorize(0)
         return row_content
 
     def _clear_lines(self, n: int):
@@ -222,7 +225,6 @@ if __name__ == "__main__":
     logger.add(table_sink)
 
     with table_sink:
-
         print("Training a simple linear model on the Iris dataset.")
 
         for epoch in range(5):
