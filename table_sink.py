@@ -77,6 +77,7 @@ class TableSink:
         parts = []
         for col in self.columns:
             parts.append("─" * widths[col])
+        return "─".join(parts)
 
         if top:
             return "╭" + "┬".join(parts) + "╮"
@@ -90,6 +91,7 @@ class TableSink:
             value = self._format_value(data.get(col, ""))
             parts.append(value.center(widths[col]))
 
+        return " " + " ".join(parts) + " "
         return "│" + "│".join(parts) + "│"
 
     def _clear_lines(self, n: int):
