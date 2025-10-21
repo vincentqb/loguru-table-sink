@@ -109,8 +109,8 @@ class TableSink:
         """Clear n lines from the terminal."""
         if n > 0:
             # Move cursor up n lines and clear them
-            sys.stdout.write(f"\033[{n}A")
-            sys.stdout.write("\033[J")
+            sys.stderr.write(f"\033[{n}A")
+            sys.stderr.write("\033[J")
 
     def _render_table(self, final: bool = False):
         """Render the entire table."""
@@ -144,8 +144,8 @@ class TableSink:
         self._clear_lines(self.last_line_count)
 
         # Write new table
-        sys.stdout.write(table_str)
-        sys.stdout.flush()
+        sys.stderr.write(table_str)
+        sys.stderr.flush()
 
         # Update line count
         self.last_line_count = table_str.count("\n")
