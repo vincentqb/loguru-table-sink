@@ -6,11 +6,24 @@ from typing import Any, Dict, List, Optional
 class TableSink:
     """A loguru sink that displays log records as an updating table."""
 
+    # Loguru's default level colors - using ANSI codes directly
+    LEVEL_COLORS = {
+        "TRACE": "\033[36m",  # Cyan
+        "DEBUG": "\033[34m",  # Blue
+        "INFO": "\033[37m",  # White
+        "SUCCESS": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[31;1m",  # Red + Bold
+    }
+    RESET = "\033[0m"
+
     def __init__(
         self,
         key_column: str = "epoch",
         float_precision: int = 4,
         max_rows: Optional[int] = None,
+        colorize: bool = True,
     ):
         """
         Initialize the table sink.
@@ -19,13 +32,16 @@ class TableSink:
             key_column: The column name to use as the primary key/identifier
             float_precision: Number of decimal places for float values
             max_rows: Maximum number of rows to display (None = unlimited)
+            colorize: Whether to colorize rows by log level
         """
         self.key_column = key_column
         self.float_precision = float_precision
         self.max_rows = max_rows
+        self.colorize = colorize
 
         self.columns: List[str] = []
         self.rows: Dict[Any, Dict[str, Any]] = {}
+        self.row_levels: Dict[Any, str] = {}  # Track level for each row
         self.row_order: List[Any] = []
         self.header_printed = False
         self.last_line_count = 0
@@ -76,20 +92,18 @@ class TableSink:
             parts.append("─" * widths[col])
         return "─".join(parts)
 
-        if top:
-            return "╭" + "┬".join(parts) + "╮"
-        else:
-            return "├" + "┼".join(parts) + "┤"
-
-    def _build_row(self, data: Dict[str, Any], widths: Dict[str, int]) -> str:
+    def _build_row(self, data: Dict[str, Any], widths: Dict[str, int], color_code: str = "") -> str:
         """Build a single row of the table."""
         parts = []
         for col in self.columns:
             value = self._format_value(data.get(col, ""))
             parts.append(value.rjust(widths[col] - 1) + " ")
 
-        return " " + " ".join(parts) + " "
-        return "│" + "│".join(parts) + "│"
+        row_content = " " + " ".join(parts) + " "
+
+        if color_code and self.colorize:
+            return color_code + row_content + self.RESET
+        return row_content
 
     def _clear_lines(self, n: int):
         """Clear n lines from the terminal."""
@@ -113,10 +127,12 @@ class TableSink:
         # Header separator
         output.write(self._build_separator(widths) + "\n")
 
-        # Data rows
+        # Data rows with colors
         for idx, key in enumerate(self.row_order):
             row_data = self.rows[key]
-            output.write(self._build_row(row_data, widths) + "\n")
+            level = self.row_levels.get(key, "INFO")
+            color_code = self.LEVEL_COLORS.get(level, "")
+            output.write(self._build_row(row_data, widths, color_code) + "\n")
 
         table_str = output.getvalue()
 
@@ -150,6 +166,7 @@ class TableSink:
             return
 
         key_value = extra_data[self.key_column]
+        level_name = record["level"].name
 
         # Update columns
         self._update_columns(extra_data)
@@ -163,8 +180,10 @@ class TableSink:
                 # Remove the oldest row
                 oldest_key = self.row_order.pop(0)
                 del self.rows[oldest_key]
+                del self.row_levels[oldest_key]
 
         self.rows[key_value] = extra_data
+        self.row_levels[key_value] = level_name
 
         # Render the table
         self._render_table()
@@ -183,10 +202,10 @@ if __name__ == "__main__":
     table_sink = TableSink(key_column="epoch", float_precision=4, max_rows=6)
     logger.add(table_sink)
 
-    # Simulate training
+    # Simulate training with different log levels
     print("Training a simple linear model on the Iris dataset.")
 
-    # First few epochs without validation
+    # First few epochs - INFO level
     for epoch in range(5):
         train_loss = 1.5 / (epoch + 1) + 0.05
         train_acc = 0.3 + epoch * 0.08
@@ -195,21 +214,28 @@ if __name__ == "__main__":
 
         time.sleep(0.3)
 
-    # Add validation metrics
-    logger.bind(epoch=4, train_loss=0.6019, train_accuracy=0.6964, valid_loss=0.8493, valid_accuracy=0.6842).info(
+    # Add validation metrics - SUCCESS level
+    logger.bind(epoch=4, train_loss=0.6019, train_accuracy=0.6964, valid_loss=0.8493, valid_accuracy=0.6842).success(
         "training"
     )
     time.sleep(0.3)
 
-    # Continue with more epochs
+    # Continue with more epochs - mix of levels
     for epoch in range(5, 10):
         train_loss = 1.5 / (epoch + 1)
         train_acc = 0.3 + epoch * 0.08
 
-        logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).info("training")
+        # Use different levels to show colors
+        if epoch == 6:
+            logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).warning("training")
+        elif epoch == 8:
+            logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).error("training")
+        else:
+            logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).info("training")
+
         if epoch == 7:
             for i in range(10):
-                logger.bind(epoch=epoch, train_loss=train_loss + i, train_accuracy=train_acc).info("training")
+                logger.bind(epoch=epoch, train_loss=train_loss + i, train_accuracy=train_acc).debug("training")
                 time.sleep(0.3)
 
         time.sleep(0.3)
