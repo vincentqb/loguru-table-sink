@@ -89,7 +89,7 @@ class TableSink:
         parts = []
         for col in self.columns:
             value = self._format_value(data.get(col, ""))
-            parts.append(value.center(widths[col]))
+            parts.append(value.rjust(widths[col] - 1) + " ")
 
         return " " + " ".join(parts) + " "
         return "│" + "│".join(parts) + "│"
