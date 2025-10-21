@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional
 class TableSink:
     """A loguru sink that displays log records as an updating table."""
 
-    # Loguru's default level colors - using ANSI codes directly
     LEVEL_COLORS = {
         "TRACE": "\033[36m",  # Cyan
         "DEBUG": "\033[34m",  # Blue
@@ -45,6 +44,7 @@ class TableSink:
         self.row_order: List[Any] = []
         self.header_printed = False
         self.last_line_count = 0
+        self.finished = False
 
     def _format_value(self, value: Any) -> str:
         """Format a value for display in the table."""
@@ -85,7 +85,7 @@ class TableSink:
 
         return widths
 
-    def _build_separator(self, widths: Dict[str, int], top: bool = False) -> str:
+    def _build_separator(self, widths: Dict[str, int]) -> str:
         """Build a separator line."""
         parts = []
         for col in self.columns:
@@ -112,13 +112,13 @@ class TableSink:
             sys.stdout.write(f"\033[{n}A")
             sys.stdout.write("\033[J")
 
-    def _render_table(self):
+    def _render_table(self, final: bool = False):
         """Render the entire table."""
         output = StringIO()
         widths = self._calculate_column_widths()
 
         # Top border
-        output.write(self._build_separator(widths, top=True) + "\n")
+        output.write(self._build_separator(widths) + "\n")
 
         # Header
         header_data = {col: col for col in self.columns}
@@ -133,6 +133,10 @@ class TableSink:
             level = self.row_levels.get(key, "INFO")
             color_code = self.LEVEL_COLORS.get(level, "")
             output.write(self._build_row(row_data, widths, color_code) + "\n")
+
+        # Bottom border if final
+        if final:
+            output.write(self._build_separator(widths) + "\n")
 
         table_str = output.getvalue()
 
@@ -153,6 +157,9 @@ class TableSink:
         Expected usage:
             logger.bind(epoch=0, train_loss=1.5541, train_accuracy=0.3393).info("Training")
         """
+        if self.finished:
+            return
+
         # Extract extra fields from the record
         record = message.record
         extra_data = record["extra"].copy()
@@ -177,7 +184,6 @@ class TableSink:
 
             # Enforce max_rows limit
             if self.max_rows and len(self.row_order) > self.max_rows:
-                # Remove the oldest row
                 oldest_key = self.row_order.pop(0)
                 del self.rows[oldest_key]
                 del self.row_levels[oldest_key]
@@ -185,11 +191,24 @@ class TableSink:
         self.rows[key_value] = extra_data
         self.row_levels[key_value] = level_name
 
-        # Render the table
         self._render_table()
 
+    def finish(self):
+        """Finish the table by adding a bottom border."""
+        if not self.finished and self.rows:
+            self.finished = True
+            self._render_table(final=True)
 
-# Example usage
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - finish the table."""
+        self.finish()
+        return False
+
+
 if __name__ == "__main__":
     import time
 
@@ -198,46 +217,43 @@ if __name__ == "__main__":
     # Remove default handler
     logger.remove()
 
-    # Add table sink
+    # Create table sink as context manager
     table_sink = TableSink(key_column="epoch", float_precision=4, max_rows=6)
     logger.add(table_sink)
 
-    # Simulate training with different log levels
-    print("Training a simple linear model on the Iris dataset.")
+    with table_sink:
 
-    # First few epochs - INFO level
-    for epoch in range(5):
-        train_loss = 1.5 / (epoch + 1) + 0.05
-        train_acc = 0.3 + epoch * 0.08
+        print("Training a simple linear model on the Iris dataset.")
 
-        logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).info("training")
+        for epoch in range(5):
+            train_loss = 1.5 / (epoch + 1) + 0.05
+            train_acc = 0.3 + epoch * 0.08
 
-        time.sleep(0.3)
-
-    # Add validation metrics - SUCCESS level
-    logger.bind(epoch=4, train_loss=0.6019, train_accuracy=0.6964, valid_loss=0.8493, valid_accuracy=0.6842).success(
-        "training"
-    )
-    time.sleep(0.3)
-
-    # Continue with more epochs - mix of levels
-    for epoch in range(5, 10):
-        train_loss = 1.5 / (epoch + 1)
-        train_acc = 0.3 + epoch * 0.08
-
-        # Use different levels to show colors
-        if epoch == 6:
-            logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).warning("training")
-        elif epoch == 8:
-            logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).error("training")
-        else:
             logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).info("training")
 
-        if epoch == 7:
-            for i in range(10):
-                logger.bind(epoch=epoch, train_loss=train_loss + i, train_accuracy=train_acc).debug("training")
-                time.sleep(0.3)
+            time.sleep(0.3)
 
+        logger.bind(
+            epoch=4, train_loss=0.6019, train_accuracy=0.6964, valid_loss=0.8493, valid_accuracy=0.6842
+        ).success("training")
         time.sleep(0.3)
 
-    print("\n")  # Final newline after table
+        for epoch in range(5, 10):
+            train_loss = 1.5 / (epoch + 1)
+            train_acc = 0.3 + epoch * 0.08
+
+            if epoch == 6:
+                logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).warning("training")
+            elif epoch == 8:
+                logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).error("training")
+            else:
+                logger.bind(epoch=epoch, train_loss=train_loss, train_accuracy=train_acc).info("training")
+
+            if epoch == 7:
+                for i in range(10):
+                    logger.bind(epoch=epoch, train_loss=train_loss + i, train_accuracy=train_acc).debug("training")
+                    time.sleep(0.3)
+
+            time.sleep(0.3)
+
+    print("Training complete!")
